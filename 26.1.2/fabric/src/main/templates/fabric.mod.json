@@ -1,0 +1,4 @@
+{
+  "depends": { "minecraft": "=26.1.2" },
+  "suggests": { "modmenu": "*" }
+}

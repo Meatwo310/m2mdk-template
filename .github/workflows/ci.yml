@@ -1,0 +1,49 @@
+name: Build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    working-directory: consumer
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          path: consumer
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Meatwo310/m2mdk
+          ref: main2
+          path: m2mdk
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Verify Gradle Wrapper
+        run: python3 -c 'import hashlib,pathlib; p=pathlib.Path("gradle/wrapper/gradle-wrapper.jar"); assert hashlib.sha256(p.read_bytes()).hexdigest() == p.with_suffix(".jar.sha256").read_text().strip()'
+      - name: Build release artifacts
+        run: |
+          ./gradlew build assembleRelease --no-daemon
+      - name: Check configuration cache reuse
+        run: |
+          ./gradlew build assembleRelease --no-daemon | tee /tmp/cache-reuse.log
+          grep -q 'Reusing configuration cache.' /tmp/cache-reuse.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mods
+          path: consumer/build/release/
+          if-no-files-found: error

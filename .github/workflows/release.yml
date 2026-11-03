@@ -1,0 +1,53 @@
+name: Draft release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+defaults:
+  run:
+    working-directory: consumer
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      CI: 'true'
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          path: consumer
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Meatwo310/m2mdk
+          ref: main2
+          path: m2mdk
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      # Build release artifacts from source without shared Actions caches.
+      - run: test "$RELEASE_TAG" = "v$(cat version.txt)"
+      - name: Verify Gradle Wrapper
+        run: python3 -c 'import hashlib,pathlib; p=pathlib.Path("gradle/wrapper/gradle-wrapper.jar"); assert hashlib.sha256(p.read_bytes()).hexdigest() == p.with_suffix(".jar.sha256").read_text().strip()'
+      - run: ./gradlew build assembleRelease --no-daemon
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: consumer/build/release/**/*.jar
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes \
+            build/release/*/*.jar
